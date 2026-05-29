@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment / secrets
+.env
+*.env.local
+*.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite3
+
+# Docker volumes (local bind mounts)
+postgres_data/
+redis_data/
+
+# Alembic
+# Keep versions tracked; ignore auto-generated __pycache__ inside
+backend/alembic/versions/__pycache__/
+
+# Coverage / test artefacts
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Node (frontend)
+node_modules/
+.next/
+dist/
+
+# Claude Code internal memory
+.claude/
