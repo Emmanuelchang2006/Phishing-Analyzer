@@ -1,7 +1,13 @@
+import { useState } from 'react'
+import { downloadPdfReport } from '../api/client'
 import type { RiskLevel, ScanResponse } from '../types/scan'
 import { AIVerdictCard } from './AIVerdictCard'
 import { EmailAuthSection } from './EmailAuthSection'
+import { KeywordSection } from './KeywordSection'
+import { MITRESection } from './MITRESection'
 import { ThreatIntelSection } from './ThreatIntelSection'
+import { TyposquattingSection } from './TyposquattingSection'
+import { URLAnalysisSection } from './URLAnalysisSection'
 import { WhoisSection } from './WhoisSection'
 
 const GAUGE_R = 44
@@ -77,9 +83,24 @@ function truncate(s: string, n: number): string {
 interface Props { result: ScanResponse }
 
 export function ScanResult({ result }: Props) {
+  const [downloading, setDownloading] = useState(false)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
+
   const risk = result.risk_score
   const level: RiskLevel = risk?.level ?? 'unknown'
   const c = RISK[level]
+
+  async function handleDownloadPdf() {
+    setDownloading(true)
+    setDownloadError(null)
+    try {
+      await downloadPdfReport(result.scan_id)
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Download failed')
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -90,7 +111,7 @@ export function ScanResult({ result }: Props) {
           {risk && <RiskGauge score={risk.score} level={level} />}
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2.5 mb-3">
+            <div className="flex items-center gap-2.5 mb-3 flex-wrap">
               <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold tracking-widest border ${c.badge}`}>
                 {c.label}
               </span>
@@ -99,7 +120,29 @@ export function ScanResult({ result }: Props) {
                   {(risk.confidence * 100).toFixed(0)}% confidence
                 </span>
               )}
+              {/* PDF Export Button */}
+              <button
+                onClick={handleDownloadPdf}
+                disabled={downloading}
+                className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold
+                           bg-zinc-800 text-zinc-400 border border-zinc-700
+                           hover:bg-zinc-700 hover:text-zinc-200 hover:border-zinc-600
+                           disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {downloading ? (
+                  <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                )}
+                {downloading ? 'Generating…' : 'PDF Report'}
+              </button>
             </div>
+
             <p className="text-sm font-mono text-zinc-300 break-all leading-snug mb-2">
               {truncate(result.target, 80)}
             </p>
@@ -113,6 +156,10 @@ export function ScanResult({ result }: Props) {
               )}
             </div>
             <p className="text-[10px] font-mono text-zinc-700 mt-1">{result.scan_id}</p>
+
+            {downloadError && (
+              <p className="text-[10px] text-red-400 mt-1">{downloadError}</p>
+            )}
           </div>
         </div>
 
@@ -140,6 +187,11 @@ export function ScanResult({ result }: Props) {
         )}
       </div>
 
+      {/* ── MITRE ATT&CK ────────────────────────────────────────────────────── */}
+      {result.mitre_tactics && result.mitre_tactics.techniques.length > 0 && (
+        <MITRESection mitre={result.mitre_tactics} />
+      )}
+
       {/* ── AI Verdict ──────────────────────────────────────────────────────── */}
       {result.ai_verdict && <AIVerdictCard verdict={result.ai_verdict} />}
 
@@ -148,11 +200,75 @@ export function ScanResult({ result }: Props) {
         <ThreatIntelSection results={result.threat_intel} />
       )}
 
+      {/* ── Typosquatting + URL Analysis ────────────────────────────────────── */}
+      {(result.typosquatting ?? result.url_analysis) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {result.typosquatting && (
+            <TyposquattingSection typo={result.typosquatting} />
+          )}
+          {result.url_analysis && result.url_analysis.analyzed_urls.length > 0 && (
+            <URLAnalysisSection analysis={result.url_analysis} />
+          )}
+        </div>
+      )}
+
+      {/* ── Keyword Detection ───────────────────────────────────────────────── */}
+      {result.keywords && result.keywords.matches.length > 0 && (
+        <KeywordSection keywords={result.keywords} />
+      )}
+
       {/* ── WHOIS + Email Auth ───────────────────────────────────────────────── */}
       {(result.whois ?? result.email_auth) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {result.whois && <WhoisSection whois={result.whois} />}
           {result.email_auth && <EmailAuthSection auth={result.email_auth} />}
+        </div>
+      )}
+
+      {/* ── Email Routing Chain ─────────────────────────────────────────────── */}
+      {result.email_headers && result.email_headers.hop_count > 0 && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+          <div className="px-5 py-3 border-b border-zinc-800 flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">
+              Email Routing Chain
+            </span>
+            <span className="text-[10px] text-zinc-600">
+              {result.email_headers.hop_count} hop{result.email_headers.hop_count !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <div className="px-5 py-4 space-y-2">
+            {result.email_headers.originating_ip && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-zinc-600 w-28 flex-shrink-0">Originating IP</span>
+                <span className="font-mono text-amber-400">{result.email_headers.originating_ip}</span>
+              </div>
+            )}
+            {result.email_headers.x_mailer && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-zinc-600 w-28 flex-shrink-0">X-Mailer</span>
+                <span className={`font-mono ${result.email_headers.suspicious_mailer ? 'text-red-400' : 'text-zinc-400'}`}>
+                  {result.email_headers.x_mailer}
+                  {result.email_headers.suspicious_mailer && (
+                    <span className="ml-2 text-[9px] font-bold px-1 py-0.5 rounded bg-red-500/10 border border-red-500/20 text-red-400 uppercase">
+                      Suspicious
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
+            <div className="mt-2 space-y-1">
+              {result.email_headers.hops.slice(0, 6).map((hop, i) => (
+                <div key={i} className="flex items-start gap-2 text-[11px]">
+                  <span className="text-zinc-700 font-mono w-4 flex-shrink-0">{i + 1}</span>
+                  <span className="text-zinc-500">
+                    {hop.from_host && <span>from <span className="text-zinc-400 font-mono">{hop.from_host}</span> </span>}
+                    {hop.by_host && <span>→ <span className="text-zinc-400 font-mono">{hop.by_host}</span></span>}
+                    {hop.ip && <span className="text-zinc-600"> [{hop.ip}]</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

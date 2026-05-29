@@ -71,3 +71,22 @@ export async function getScanById(scanId: string): Promise<ScanResponse> {
   if (!res.ok) throw new Error(await extractError(res))
   return res.json() as Promise<ScanResponse>
 }
+
+export async function downloadPdfReport(scanId: string): Promise<void> {
+  let res: Response
+  try {
+    res = await fetch(`${BASE}/scan/${scanId}/report`)
+  } catch {
+    throw new Error('Backend is not reachable.')
+  }
+  if (!res.ok) throw new Error(await extractError(res))
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `phishing-report-${scanId}.pdf`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}

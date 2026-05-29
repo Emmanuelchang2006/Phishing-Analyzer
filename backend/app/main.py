@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
 from app.db.session import close_db, init_db
 from app.routers import health, scan
+from app.routers import report
 
 settings = get_settings()
 
@@ -81,6 +82,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(scan.router)
+    app.include_router(report.router)
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:

@@ -15,9 +15,13 @@ class EmailArtifacts:
     reply_to_domain: str | None = None
     return_path_domain: str | None = None
     received_ips: list[str] = field(default_factory=list)
+    received_headers_raw: list[str] = field(default_factory=list)
     message_id: str | None = None
     subject: str | None = None
-    auth_results_raw: str | None = None   # Raw Authentication-Results header value
+    auth_results_raw: str | None = None
+    x_mailer: str | None = None
+    x_originating_ip: str | None = None
+    body_text: str | None = None
 
     @property
     def domain_mismatch(self) -> bool:
@@ -27,10 +31,10 @@ class EmailArtifacts:
         return False
 
 
-# Matches IPv4 addresses embedded in Received headers ("from [1.2.3.4]")
 _IPV4_RE = re.compile(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b")
 _EMAIL_RE = re.compile(r"[\w.+-]+@([\w.-]+\.[a-zA-Z]{2,})")
 _HEADER_LINE_RE = re.compile(r"^([\w-]+):\s*(.+)$", re.MULTILINE | re.IGNORECASE)
+_URL_RE = re.compile(r"https?://[^\s<>\"']{4,}", re.IGNORECASE)
 
 
 def extract_domain_from_url(url: str) -> str | None:
@@ -42,6 +46,11 @@ def extract_domain_from_url(url: str) -> str | None:
         return None
 
 
+def extract_urls_from_text(text: str) -> list[str]:
+    """Extract all HTTP/HTTPS URLs from arbitrary text, preserving order and deduplicating."""
+    return list(dict.fromkeys(_URL_RE.findall(text)))
+
+
 def extract_email_artifacts(raw_headers: str) -> EmailArtifacts:
     """
     Parse raw email headers into structured artifacts for threat analysis.
@@ -51,9 +60,16 @@ def extract_email_artifacts(raw_headers: str) -> EmailArtifacts:
     """
     artifacts = EmailArtifacts()
 
+    # Split body from headers at the first blank line
+    if "\n\n" in raw_headers:
+        header_section, body_section = raw_headers.split("\n\n", 1)
+        artifacts.body_text = body_section.strip() or None
+    else:
+        header_section = raw_headers
+
     # Build a dict of header name → last value (fold multi-line headers)
     headers: dict[str, str] = {}
-    for match in _HEADER_LINE_RE.finditer(raw_headers):
+    for match in _HEADER_LINE_RE.finditer(header_section):
         name = match.group(1).lower()
         value = match.group(2).strip()
         headers[name] = value
@@ -85,8 +101,17 @@ def extract_email_artifacts(raw_headers: str) -> EmailArtifacts:
     # Authentication-Results (raw — parsed in email_auth service)
     artifacts.auth_results_raw = headers.get("authentication-results")
 
-    # Extract IPs from all Received headers (skip RFC-1918 / loopback)
+    # Sprint 2: X-Mailer and X-Originating-IP
+    artifacts.x_mailer = headers.get("x-mailer") or headers.get("user-agent")
+    artifacts.x_originating_ip = headers.get("x-originating-ip")
+
+    # Collect all raw Received headers (in order of appearance)
     import ipaddress
+    received_pattern = re.compile(r"^received:\s*(.+)$", re.MULTILINE | re.IGNORECASE)
+    for m in received_pattern.finditer(header_section):
+        artifacts.received_headers_raw.append(m.group(1).strip())
+
+    # Extract IPs from all Received headers (skip RFC-1918 / loopback)
     for line in raw_headers.splitlines():
         if line.lower().startswith("received:"):
             for ip_str in _IPV4_RE.findall(line):

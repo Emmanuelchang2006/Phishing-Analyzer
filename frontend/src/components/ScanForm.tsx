@@ -13,7 +13,8 @@ const SCAN_TYPES: { value: ScanType; label: string }[] = [
   { value: 'email', label: 'Email Headers' },
 ]
 
-const OPTION_LABELS: Record<keyof ScanOptions, string> = {
+// Only surface the options the user needs to toggle; sprint 2 options always run
+const OPTION_LABELS: Partial<Record<keyof ScanOptions, string>> = {
   check_virustotal: 'VirusTotal',
   check_abuseipdb: 'AbuseIPDB',
   check_whois: 'WHOIS',
@@ -27,6 +28,10 @@ const DEFAULT_OPTIONS: ScanOptions = {
   check_whois: true,
   check_email_auth: true,
   generate_ai_verdict: true,
+  check_typosquatting: true,
+  check_url_analysis: true,
+  check_keywords: true,
+  generate_mitre_mapping: true,
 }
 
 const PLACEHOLDERS: Record<ScanType, string> = {
@@ -64,7 +69,7 @@ export function ScanForm({ onResult }: Props) {
     setOptions(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
-  const optionKeys = Object.keys(OPTION_LABELS) as (keyof ScanOptions)[]
+  const optionKeys = Object.keys(OPTION_LABELS) as (keyof typeof OPTION_LABELS)[]
 
   return (
     <form onSubmit={handleSubmit} className="bg-zinc-900 border border-zinc-800 rounded-xl">
