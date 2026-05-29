@@ -24,10 +24,8 @@ A full-stack SOC (Security Operations Center) threat intelligence platform that 
 ### Analyze Tab
 ![Analyze Tab](docs/screenshots/analyze.png)
 
-### Scan Result — Phishing Email
+### Scan Result — Phishing Email Headers
 ![Scan Result](docs/screenshots/result.png)
-
-> Screenshots coming soon — run the app locally to see it in action.
 
 ---
 
@@ -267,9 +265,3 @@ Returns a single scan result by ID.
 ### `GET /api/v1/health`
 
 Returns service health status (DB, Redis, uptime).
-
----
-
-## License
-
-MIT
